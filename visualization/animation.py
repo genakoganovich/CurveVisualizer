@@ -1,28 +1,22 @@
-import numpy as np
-import pyvista as pv
 import threading
 import time
+import numpy as np
+import pyvista as pv
+from typing import Callable
 
 
-class ThreadedAnimation:
-    """Простая анимация кривой со стрелкой"""
+class AnimationEngine:
+    """Чистый движок анимации"""
 
-    def __init__(self, curve, num_frames: int = 300,
-                 window_size: tuple = (1000, 800),
-                 frame_delay: float = 0.05):
-        self.curve = curve
+    def __init__(self, num_frames: int = 300, frame_delay: float = 0.05):
         self.num_frames = num_frames
-        self.window_size = window_size
         self.frame_delay = frame_delay
-
         self.current_t = 0.0
         self.stop_event = threading.Event()
         self.calculation_thread = None
-        self.render_thread = None
-        self.plotter = None
 
     def _calculation_loop(self):
-        """Обновляет t"""
+        """Только расчеты t"""
         print("🎬 Поток расчетов запущен")
 
         frame = 0
@@ -33,8 +27,46 @@ class ThreadedAnimation:
 
         print("🛑 Поток расчетов остановлен")
 
+    def start(self):
+        """Запустить расчеты"""
+        self.calculation_thread = threading.Thread(
+            target=self._calculation_loop, daemon=False
+        )
+        self.calculation_thread.start()
+
+    def stop(self):
+        """Остановить расчеты"""
+        self.stop_event.set()
+        if self.calculation_thread and self.calculation_thread.is_alive():
+            self.calculation_thread.join(timeout=2)
+
+
+class CurveVisualizer:
+    """Визуализация кривой"""
+
+    def __init__(self, curve, engine: AnimationEngine, window_size=(1000, 800)):
+        self.curve = curve
+        self.engine = engine
+        self.window_size = window_size
+        self.plotter = None
+        self.render_thread = None
+        self.stop_event = threading.Event()
+
+        # ★ Встроенный менеджер акторов
+        from visualization.actor_manager import ActorManager
+        self.actor_manager = ActorManager()
+        self.on_update: Callable = self.actor_manager.update_all
+
+    def add_actor(self, actor):
+        """Добавить актор в визуализацию"""
+        self.actor_manager.add_actor(actor)
+
+    def remove_actor(self, actor):
+        """Удалить актор"""
+        self.actor_manager.remove_actor(actor)
+
     def _render_loop(self):
-        """Рендеринг окна"""
+        """Цикл рендеринга"""
         print("🎨 Поток рендеринга запущен")
 
         # Создаем плоттер
@@ -50,7 +82,6 @@ class ThreadedAnimation:
             line_width=3
         )
 
-        # Инициализируем окно
         self.plotter.show(interactive_update=True, auto_close=False)
         print("🖼️ Плоттер инициализирован\n")
 
@@ -59,26 +90,13 @@ class ThreadedAnimation:
             iren = self.plotter.iren
             while not self.stop_event.is_set():
                 try:
-                    # Получаем текущую позицию и направление
-                    t_arr = np.array([self.current_t])
-                    pos = self.curve.position(t_arr)[0]
-                    tangent = self.curve.tangent(t_arr)[0]
+                    # ★ Получаем t напрямую из движка ★
+                    current_t = self.engine.current_t
 
-                    # Удаляем старую стрелку (но не кривую)
-                    actors_list = list(self.plotter.actors.values())
-                    for actor in actors_list[1:]:
-                        try:
-                            self.plotter.remove_actor(actor, reset_camera=False)
-                        except:
-                            pass
+                    # Вызываем callback для обновления акторов
+                    if self.on_update:
+                        self.on_update(self.plotter, current_t)
 
-                    # Добавляем новую стрелку
-                    scale = 0.3
-                    end_pos = pos + tangent * scale
-                    arrow = pv.Line(pos, end_pos)
-                    self.plotter.add_mesh(arrow, color="red", line_width=4)
-
-                    # Обновляем окно
                     iren.process_events()
                     self.plotter.render()
                     time.sleep(0.016)
@@ -96,35 +114,16 @@ class ThreadedAnimation:
 
         print("🛑 Поток рендеринга остановлен")
 
-    def start(self):
-        """Запустить анимацию"""
-        print("▶️ Запуск анимации...")
-
-        # Поток расчетов
-        self.calculation_thread = threading.Thread(
-            target=self._calculation_loop, daemon=False
-        )
-        self.calculation_thread.start()
-
-        # Поток рендеринга
+    def show(self):
+        """Запустить визуализацию"""
         self.render_thread = threading.Thread(
             target=self._render_loop, daemon=False
         )
         self.render_thread.start()
 
-        print("📊 Запуск цикла обновления\n")
-
-        # Ждем закрытия окна
         if self.render_thread.is_alive():
             self.render_thread.join()
 
-        # Останавливаем все
-        self.stop_event.set()
-        if self.calculation_thread.is_alive():
-            self.calculation_thread.join(timeout=2)
-
-        print("\n✅ Анимация завершена")
-
     def stop(self):
-        """Остановить"""
+        """Остановить визуализацию"""
         self.stop_event.set()

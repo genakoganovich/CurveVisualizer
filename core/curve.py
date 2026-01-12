@@ -141,6 +141,23 @@ class Curve3D:
         torsion = np.sum(cross * jer, axis=1) / (cross_norm_sq + 1e-10)
         return torsion
 
+    # ============= УДОБНЫЕ МЕТОДЫ ДЛЯ ДОСТУПА К FRENET FRAME =============
+
+    def normal(self, t: np.ndarray) -> np.ndarray:
+        """Главная нормаль N(t)"""
+        _, N, _ = self.frenet_frame(t)
+        return N
+
+    def binormal(self, t: np.ndarray) -> np.ndarray:
+        """Бинормаль B(t)"""
+        _, _, B = self.frenet_frame(t)
+        return B
+
+    def tangent_vector(self, t: np.ndarray) -> np.ndarray:
+        """Касательный вектор T(t) через frenet_frame"""
+        T, _, _ = self.frenet_frame(t)
+        return T
+
     # ============= КИНЕМАТИКА =============
 
     def speed(self, t: np.ndarray) -> np.ndarray:

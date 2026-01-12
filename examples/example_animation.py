@@ -13,7 +13,7 @@ points = np.column_stack([
 curve = Curve3D(points)
 
 # Движок и визуализатор
-engine = AnimationEngine(curve, num_frames=300, frame_delay=0.05)
+engine = AnimationEngine(curve, num_frames=300, frame_delay=0.08)
 
 # ★ Параметр hide_radius управляет размером скрытого участка
 visualizer = CurveVisualizer(
@@ -22,8 +22,9 @@ visualizer = CurveVisualizer(
     hide_radius=0.02  # Скрыть ±10% траектории вокруг стрелки
 )
 
-# Добавляем стрелки
-visualizer.add_actor(ArrowActor(curve, "tangent", scale=0.2, color="red"))
+
+# Более плавное движение
+visualizer.add_actor(ArrowActor(curve, "tangent", scale=0.2, color="red", smoothing=0.5))
 visualizer.add_actor(ArrowActor(curve, "normal", scale=0.2, color="green"))
 visualizer.add_actor(ArrowActor(curve, "binormal", scale=0.2, color="blue"))
 

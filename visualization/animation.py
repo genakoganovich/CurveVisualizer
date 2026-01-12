@@ -66,26 +66,59 @@ class AnimationEngine:
 class CurveVisualizer:
     """Визуализация кривой"""
 
-    def __init__(self, curve, engine: AnimationEngine, window_size=(1000, 800)):
+    def __init__(self, curve, engine, window_size=(1000, 800), hide_radius: float = 0.15):
+        """
+        Args:
+            curve: объект кривой
+            engine: AnimationEngine
+            window_size: размер окна
+            hide_radius: радиус скрытия траектории вокруг стрелки (0-1)
+        """
         self.curve = curve
         self.engine = engine
         self.window_size = window_size
+        self.hide_radius = hide_radius  # ★ Новый параметр
+
         self.plotter = None
         self.render_thread = None
         self.stop_event = threading.Event()
 
-        # ★ Встроенный менеджер акторов
         from visualization.actor_manager import ActorManager
         self.actor_manager = ActorManager()
         self.on_update: Callable = self.actor_manager.update_all
 
+        # ★ Для отрисовки траектории
+        self._trajectory_actors = None
+
     def add_actor(self, actor):
-        """Добавить актор в визуализацию"""
+        """Добавить актор"""
         self.actor_manager.add_actor(actor)
 
     def remove_actor(self, actor):
         """Удалить актор"""
         self.actor_manager.remove_actor(actor)
+
+    def _get_trajectory_mesh(self, t_current: float) -> list:
+        """
+        Получить части траектории без участка под стрелкой
+
+        Returns:
+            список (points1, points2) для двух частей траектории
+        """
+        # Вычисляем интервал для скрытия
+        t_start = max(0, t_current - self.hide_radius)
+        t_end = min(1, t_current + self.hide_radius)
+
+        # Разбиваем траекторию на части
+        # Часть 1: от 0 до t_start
+        t_part1 = np.linspace(0, t_start, max(2, int(300 * t_start)))
+        positions_part1 = self.curve.position(t_part1)
+
+        # Часть 2: от t_end до 1
+        t_part2 = np.linspace(t_end, 1, max(2, int(300 * (1 - t_end))))
+        positions_part2 = self.curve.position(t_part2)
+
+        return [positions_part1, positions_part2]
 
     def _render_loop(self):
         """Цикл рендеринга"""
@@ -95,27 +128,65 @@ class CurveVisualizer:
         self.plotter = pv.Plotter(window_size=self.window_size)
         self.plotter.set_background("black")
 
-        # Добавляем кривую
-        t_values = np.linspace(0, 1, 300)
-        positions = self.curve.position(t_values)
-        self.plotter.add_mesh(
-            pv.lines_from_points(positions),
-            color="yellow",
-            line_width=3
-        )
+        # ★ Добавляем полную траекторию один раз (для справки)
+        # Можно убрать, если не нужна
+        # t_values = np.linspace(0, 1, 300)
+        # positions = self.curve.position(t_values)
+        # self.plotter.add_mesh(
+        #     pv.lines_from_points(positions),
+        #     color="yellow",
+        #     line_width=3,
+        #     opacity=0.3
+        # )
 
         self.plotter.show(interactive_update=True, auto_close=False)
         print("🖼️ Плоттер инициализирован\n")
+
+        # Переменные для отслеживания
+        last_t = -1
+        trajectory_actors = [None, None]  # ★ Два актора для двух частей
 
         # Цикл рендеринга
         try:
             iren = self.plotter.iren
             while not self.stop_event.is_set():
                 try:
-                    # ★ Получаем t напрямую из движка ★
                     current_t = self.engine.current_t
 
-                    # Вызываем callback для обновления акторов
+                    # ★ Обновляем траекторию только если t изменился значительно
+                    if abs(current_t - last_t) > 0.005:
+                        # Удаляем старые части траектории
+                        for actor in trajectory_actors:
+                            if actor is not None:
+                                try:
+                                    self.plotter.remove_actor(actor)
+                                except:
+                                    pass
+
+                        # Получаем новые части
+                        trajectory_parts = self._get_trajectory_mesh(current_t)
+
+                        # Рисуем первую часть (до стрелки)
+                        if len(trajectory_parts[0]) > 1:
+                            mesh1 = pv.lines_from_points(trajectory_parts[0])
+                            trajectory_actors[0] = self.plotter.add_mesh(
+                                mesh1,
+                                color="yellow",
+                                line_width=3
+                            )
+
+                        # Рисуем вторую часть (после стрелки)
+                        if len(trajectory_parts[1]) > 1:
+                            mesh2 = pv.lines_from_points(trajectory_parts[1])
+                            trajectory_actors[1] = self.plotter.add_mesh(
+                                mesh2,
+                                color="yellow",
+                                line_width=3
+                            )
+
+                        last_t = current_t
+
+                    # Обновляем акторы (стрелки)
                     if self.on_update:
                         self.on_update(self.plotter, current_t)
 

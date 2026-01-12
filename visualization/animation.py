@@ -1,44 +1,66 @@
-import threading
-import time
 import numpy as np
 import pyvista as pv
+import time
+import threading
 from typing import Callable
 
 
 class AnimationEngine:
-    """Чистый движок анимации"""
+    """Чистый движок анимации с бесконечным циклом"""
 
-    def __init__(self, num_frames: int = 300, frame_delay: float = 0.05):
+    def __init__(self, curve=None, num_frames: int = 300, frame_delay: float = 0.05, speed: float = 1.0):
+        """
+        Args:
+            curve: Curve3D объект (опционально)
+            num_frames: количество кадров в одном цикле
+            frame_delay: задержка между кадрами в секундах
+            speed: скорость проигрывания (не используется в новой версии)
+        """
+        self.curve = curve
         self.num_frames = num_frames
         self.frame_delay = frame_delay
+        self.speed = speed
         self.current_t = 0.0
         self.stop_event = threading.Event()
         self.calculation_thread = None
-
-    def _calculation_loop(self):
-        """Только расчеты t"""
-        print("🎬 Поток расчетов запущен")
-
-        frame = 0
-        while not self.stop_event.is_set():
-            self.current_t = frame / (self.num_frames - 1)
-            frame = (frame + 1) % self.num_frames
-            time.sleep(self.frame_delay)
-
-        print("🛑 Поток расчетов остановлен")
+        self.frame_count = 0  # Для отладки
 
     def start(self):
         """Запустить расчеты"""
+        print("🎬 Поток расчетов запущен")
+
+        self.stop_event.clear()
+        self.frame_count = 0
         self.calculation_thread = threading.Thread(
-            target=self._calculation_loop, daemon=False
+            target=self._calculation_loop, daemon=True
         )
         self.calculation_thread.start()
+
+    def _calculation_loop(self):
+        """Цикл расчетов - работает бесконечно"""
+        frame = 0
+        try:
+            while not self.stop_event.is_set():
+                # Зацикливаем от 0 до 1
+                self.current_t = (frame % self.num_frames) / self.num_frames
+                self.frame_count = frame
+
+                frame += 1
+                time.sleep(self.frame_delay)
+        finally:
+            print(f"🛑 Поток расчетов остановлен (всего кадров: {self.frame_count})")
 
     def stop(self):
         """Остановить расчеты"""
         self.stop_event.set()
         if self.calculation_thread and self.calculation_thread.is_alive():
-            self.calculation_thread.join(timeout=2)
+            self.calculation_thread.join(timeout=1.0)
+
+    def get_fps(self) -> float:
+        """Получить текущий FPS"""
+        if self.frame_delay > 0:
+            return 1.0 / self.frame_delay
+        return 0.0
 
 
 class CurveVisualizer:

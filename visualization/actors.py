@@ -1,3 +1,4 @@
+# visualization/actors.py
 import numpy as np
 import pyvista as pv
 from visualization.base_actor import BaseActor
@@ -8,14 +9,7 @@ class ArrowActor(BaseActor):
 
     def __init__(self, curve, arrow_type: str = "tangent", scale: float = 0.3,
                  color: str = "white", smoothing: float = 0.0):
-        """
-        Args:
-            arrow_type: "tangent", "normal" или "binormal"
-            scale: масштаб стрелки
-            smoothing: сглаживание (0-1)
-        """
         super().__init__(curve, color, smoothing)
-
         self.arrow_type = arrow_type
         self.scale = scale
         self._direction_func = self._get_direction_func()
@@ -37,8 +31,92 @@ class ArrowActor(BaseActor):
         direction = direction / (np.linalg.norm(direction) + 1e-10) * self.scale
         return position, direction
 
+    def _create_mesh_geometry(self, position: np.ndarray, direction: np.ndarray):
+        """★ Создает меш БЕЗ добавления в plotter"""
+        return pv.Arrow(start=position, direction=direction, scale=0.1)
+
     def _create_mesh(self, position: np.ndarray, direction: np.ndarray, plotter):
-        arrow = pv.Arrow(start=position, direction=direction, scale=0.1)
+        """★ Создает и добавляет меш в plotter (первый раз)"""
+        arrow = self._create_mesh_geometry(position, direction)
+        return plotter.add_mesh(arrow, color=self.color)
+
+
+class CurvatureActor(BaseActor):
+    """Стрелка кривизны"""
+
+    arrow_type = "curvature"
+
+    def __init__(self, curve, scale: float = 0.5, color: str = "magenta", smoothing: float = 0.0):
+        super().__init__(curve, color, smoothing)
+        self.scale = scale
+
+    def _compute_geometry(self, t: float) -> tuple:
+        position = self.curve.position(np.array([t]))[0]
+        curvature = self.curve.curvature(np.array([t]))[0]
+        _, normal, _ = self.curve.frenet_frame(np.array([t]))
+        normal = normal[0]
+        direction = normal * curvature * self.scale
+        return position, direction
+
+    def _create_mesh_geometry(self, position: np.ndarray, direction: np.ndarray):
+        """★ Создает меш БЕЗ добавления в plotter"""
+        return pv.Arrow(start=position, direction=direction, scale=0.1)
+
+    def _create_mesh(self, position: np.ndarray, direction: np.ndarray, plotter):
+        """★ Создает и добавляет меш в plotter (первый раз)"""
+        arrow = self._create_mesh_geometry(position, direction)
+        return plotter.add_mesh(arrow, color=self.color)
+
+
+class TorsionActor(BaseActor):
+    """Стрелка кручения"""
+
+    arrow_type = "torsion"
+
+    def __init__(self, curve, scale: float = 0.5, color: str = "orange", smoothing: float = 0.0):
+        super().__init__(curve, color, smoothing)
+        self.scale = scale
+
+    def _compute_geometry(self, t: float) -> tuple:
+        position = self.curve.position(np.array([t]))[0]
+        torsion = self.curve.torsion(np.array([t]))[0]
+        _, _, binormal = self.curve.frenet_frame(np.array([t]))
+        binormal = binormal[0]
+        direction = binormal * abs(torsion) * self.scale
+        return position, direction
+
+    def _create_mesh_geometry(self, position: np.ndarray, direction: np.ndarray):
+        """★ Создает меш БЕЗ добавления в plotter"""
+        return pv.Arrow(start=position, direction=direction, scale=0.1)
+
+    def _create_mesh(self, position: np.ndarray, direction: np.ndarray, plotter):
+        """★ Создает и добавляет меш в plotter (первый раз)"""
+        arrow = self._create_mesh_geometry(position, direction)
+        return plotter.add_mesh(arrow, color=self.color)
+
+
+class SpeedActor(BaseActor):
+    """Стрелка скорости"""
+
+    arrow_type = "speed"
+
+    def __init__(self, curve, scale: float = 0.3, color: str = "lime", smoothing: float = 0.0):
+        super().__init__(curve, color, smoothing)
+        self.scale = scale
+
+    def _compute_geometry(self, t: float) -> tuple:
+        position = self.curve.position(np.array([t]))[0]
+        velocity = self.curve.velocity(np.array([t]))[0]
+        direction = velocity / (np.linalg.norm(velocity) + 1e-10) * self.scale
+        return position, direction
+
+    def _create_mesh_geometry(self, position: np.ndarray, direction: np.ndarray):
+        """★ Создает меш БЕЗ добавления в plotter"""
+        return pv.Arrow(start=position, direction=direction, scale=0.08)
+
+    def _create_mesh(self, position: np.ndarray, direction: np.ndarray, plotter):
+        """★ Создает и добавляет меш в plotter (первый раз)"""
+        arrow = self._create_mesh_geometry(position, direction)
         return plotter.add_mesh(arrow, color=self.color)
 
 
@@ -130,70 +208,59 @@ class RadiusOfCurvatureActor(BaseActor):
         )
 
 
-class CurvatureActor(BaseActor):
-    """Стрелка кривизны"""
+class EvoluteActor(BaseActor):
+    """Эволюта - кривая центров окружностей кривизны"""
 
-    arrow_type = "curvature"
+    arrow_type = "evolute"
 
-    def __init__(self, curve, scale: float = 0.5, color: str = "magenta", smoothing: float = 0.0):
+    def __init__(self, curve, color: str = "purple", line_width: int = 2,
+                 opacity: float = 0.8, smoothing: float = 0.0):
+        """
+        Args:
+            curve: объект Curve3D
+            color: цвет линии
+            line_width: толщина линии
+            opacity: прозрачность (0-1)
+            smoothing: коэффициент сглаживания
+        """
         super().__init__(curve, color, smoothing)
-        self.scale = scale
+        self.line_width = line_width
+        self.opacity = opacity
+        self._evolute_actor = None
 
     def _compute_geometry(self, t: float) -> tuple:
-        position = self.curve.position(np.array([t]))[0]
-        curvature = self.curve.curvature(np.array([t]))[0]
+        return (None, None)
 
-        _, normal, _ = self.curve.frenet_frame(np.array([t]))
-        normal = normal[0]
+    def _create_mesh(self, position, direction, plotter):
+        return None
 
-        direction = normal * curvature * self.scale
-        return position, direction
+    def update(self, plotter, t: float):
+        """Рисует эволюту от 0 до текущей точки t"""
+        # ★ Генерируем точки эволюты только ДО текущей точки t
+        t_values = np.linspace(0, t, max(2, int(150 * t)))  # ← Важно!
+        positions = self.curve.position(t_values)
+        radii = self.curve.radius_of_curvature(t_values)
 
-    def _create_mesh(self, position: np.ndarray, direction: np.ndarray, plotter):
-        arrow = pv.Arrow(start=position, direction=direction, scale=0.1)
-        return plotter.add_mesh(arrow, color=self.color)
+        # Получаем Frenet frame для каждой точки
+        _, normals, _ = self.curve.frenet_frame(t_values)
 
+        # Центры кривизны
+        evolute_points = positions + normals * radii[:, np.newaxis]
 
-class TorsionActor(BaseActor):
-    """Стрелка кручения"""
+        # Удаляем бесконечности
+        evolute_points = evolute_points[np.isfinite(evolute_points).all(axis=1)]
 
-    arrow_type = "torsion"
+        if len(evolute_points) > 1:
+            if self._evolute_actor is not None:
+                try:
+                    plotter.remove_actor(self._evolute_actor)
+                except:
+                    pass
 
-    def __init__(self, curve, scale: float = 0.5, color: str = "orange", smoothing: float = 0.0):
-        super().__init__(curve, color, smoothing)
-        self.scale = scale
-
-    def _compute_geometry(self, t: float) -> tuple:
-        position = self.curve.position(np.array([t]))[0]
-        torsion = self.curve.torsion(np.array([t]))[0]
-
-        _, _, binormal = self.curve.frenet_frame(np.array([t]))
-        binormal = binormal[0]
-
-        direction = binormal * abs(torsion) * self.scale
-        return position, direction
-
-    def _create_mesh(self, position: np.ndarray, direction: np.ndarray, plotter):
-        arrow = pv.Arrow(start=position, direction=direction, scale=0.1)
-        return plotter.add_mesh(arrow, color=self.color)
-
-
-class SpeedActor(BaseActor):
-    """Стрелка скорости"""
-
-    arrow_type = "speed"
-
-    def __init__(self, curve, scale: float = 0.3, color: str = "lime", smoothing: float = 0.0):
-        super().__init__(curve, color, smoothing)
-        self.scale = scale
-
-    def _compute_geometry(self, t: float) -> tuple:
-        position = self.curve.position(np.array([t]))[0]
-        velocity = self.curve.velocity(np.array([t]))[0]
-
-        direction = velocity / (np.linalg.norm(velocity) + 1e-10) * self.scale
-        return position, direction
-
-    def _create_mesh(self, position: np.ndarray, direction: np.ndarray, plotter):
-        arrow = pv.Arrow(start=position, direction=direction, scale=0.08)
-        return plotter.add_mesh(arrow, color=self.color)
+            mesh = pv.lines_from_points(evolute_points)
+            self._evolute_actor = plotter.add_mesh(
+                mesh,
+                color=self.color,
+                line_width=self.line_width,
+                opacity=self.opacity
+            )

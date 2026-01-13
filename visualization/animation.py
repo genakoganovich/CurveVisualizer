@@ -1,8 +1,4 @@
-import numpy as np
-import pyvista as pv
-import time
-import threading
-from typing import Callable
+# visualization/animation.py
 
 
 class AnimationEngine:

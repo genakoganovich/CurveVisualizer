@@ -6,6 +6,7 @@ from core.curve import Curve3D
 def visualize_curve_with_frenet_frame(curve, num_frames: int = 12, scale: float = 0.3):
     """
     Визуализирует кривую с полным Frenet frame (касательная, нормаль, бинормаль)
+    и центрами кривизны (эволютой)
 
     Args:
         curve: объект Curve3D
@@ -27,26 +28,64 @@ def visualize_curve_with_frenet_frame(curve, num_frames: int = 12, scale: float 
         label="Кривая"
     )
 
+    # ★ Рисуем эволюту
+    evolute_points = []
+    for t in t_values:
+        position = curve.position(np.array([t]))[0]
+        radius = curve.radius_of_curvature(np.array([t]))[0]
+        _, normal, _ = curve.frenet_frame(np.array([t]))
+        normal = normal[0]
+
+        # Обрабатываем бесконечные радиусы
+        if np.isinf(radius) or radius > 100:
+            continue
+
+        # Центр кривизны = текущая позиция + радиус * нормаль
+        evolute_point = position + normal * radius
+        evolute_points.append(evolute_point)
+
+    if evolute_points:
+        evolute_points = np.array(evolute_points)
+        plotter.add_mesh(
+            pv.lines_from_points(evolute_points),
+            color="purple",
+            line_width=2,
+            opacity=0.7,
+            label="Эволюта"
+        )
+
     # ★ Добавляем Frenet frames с шагом
     step_size = 1.0 / num_frames
 
-    print("\n📊 Frenet Frame Visualization")
-    print("=" * 60)
-    print(f"{'#':<4} {'t':<8} {'Tangent':<20} {'Normal':<20} {'Binormal':<20}")
-    print("-" * 60)
+    print("\n📊 Frenet Frame with Evolute Visualization")
+    print("=" * 80)
+    print(f"{'#':<4} {'t':<8} {'Pt':<30} {'Pe':<30} {'Radius':<10}")
+    print("-" * 80)
 
     for i in range(num_frames):
         t = i * step_size
 
-        # Вычисляем позицию и Frenet frame
+        # ★ Вычисляем позицию на кривой (Pt)
         position = curve.position(np.array([t]))[0]
-        tangent, normal, binormal = curve.frenet_frame(np.array([t]))
 
+        # ★ Вычисляем Frenet frame
+        tangent, normal, binormal = curve.frenet_frame(np.array([t]))
         tangent = tangent[0]
         normal = normal[0]
         binormal = binormal[0]
 
-        # Нормализуем
+        # ★ Вычисляем радиус кривизны и центр кривизны (Pe - точка эволюты)
+        radius = curve.radius_of_curvature(np.array([t]))[0]
+
+        # Обрабатываем бесконечные радиусы
+        if np.isinf(radius) or radius > 100:
+            radius_display = np.inf
+            evolute_point = position  # На месте если радиус бесконечен
+        else:
+            radius_display = radius
+            evolute_point = position + normal * radius
+
+        # ★ Нормализуем векторы
         tangent = tangent / (np.linalg.norm(tangent) + 1e-10) * scale
         normal = normal / (np.linalg.norm(normal) + 1e-10) * scale
         binormal = binormal / (np.linalg.norm(binormal) + 1e-10) * scale
@@ -63,15 +102,24 @@ def visualize_curve_with_frenet_frame(curve, num_frames: int = 12, scale: float 
         arrow_b = pv.Arrow(start=position, direction=binormal, scale=0.1)
         plotter.add_mesh(arrow_b, color="blue", opacity=0.9)
 
+        # ★ Точка на кривой (Pt) - жёлтая
+        # plotter.add_mesh(pv.Sphere(radius=0.005, center=position), color="yellow", opacity=1.0)
+
+        # ★ Точка на эволюте (Pe) - фиолетовая
+        # plotter.add_mesh(pv.Sphere(radius=0.005, center=evolute_point), color="purple", opacity=1.0)
+
+        # ★ Соединяем Pt и Pe отрезком (отрезок нормали/радиуса)
+        line_points = np.array([position, evolute_point])
+        plotter.add_mesh(pv.lines_from_points(line_points),
+                         color="cyan", line_width=2, opacity=0.7)
+
         # Логирование
-        t_norm = np.linalg.norm(tangent)
-        n_norm = np.linalg.norm(normal)
-        b_norm = np.linalg.norm(binormal)
+        print(f"{i + 1:<4} {t:<8.3f} ({position[0]:6.2f}, {position[1]:6.2f}, {position[2]:6.2f})  "
+              f"({evolute_point[0]:6.2f}, {evolute_point[1]:6.2f}, {evolute_point[2]:6.2f})  "
+              f"{radius_display:<10.3f}")
 
-        print(f"{i + 1:<4} {t:<8.3f} {t_norm:<20.3f} {n_norm:<20.3f} {b_norm:<20.3f}")
-
-    print("-" * 60)
-    print(f"✅ Добавлено {num_frames} Frenet frames\n")
+    print("-" * 80)
+    print(f"✅ Добавлено {num_frames} Frenet frames с центрами кривизны\n")
 
     # ★ Добавляем легенду
     plotter.add_mesh(pv.Arrow(start=[0, 0, 0], direction=[1, 0, 0], scale=0.1),
@@ -97,12 +145,15 @@ if __name__ == "__main__":
     ])
     curve = Curve3D(points)
 
-    print("\n" + "=" * 60)
-    print("🎨 Frenet Frame Visualization")
-    print("=" * 60)
-    print("Красные стрелки   → Касательная (Tangent)")
-    print("Зелёные стрелки   → Нормаль (Normal)")
-    print("Синие стрелки     → Бинормаль (Binormal)")
-    print("=" * 60)
+    print("\n" + "=" * 80)
+    print("🎨 Frenet Frame with Evolute Visualization")
+    print("=" * 80)
+    print("Красные стрелки      → Касательная (Tangent)")
+    print("Зелёные стрелки      → Нормаль (Normal)")
+    print("Синие стрелки        → Бинормаль (Binormal)")
+    print("Жёлтые точки (Pt)    → Точки на кривой")
+    print("Фиолетовые точки (Pe)→ Центры кривизны (эволюта)")
+    print("Голубые отрезки      → Радиусы кривизны (Pt → Pe)")
+    print("=" * 80)
 
     visualize_curve_with_frenet_frame(curve, num_frames=12, scale=0.3)

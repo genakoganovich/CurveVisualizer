@@ -24,7 +24,7 @@ def visualize_curve_with_frenet_frame(curve, num_frames: int = 12, scale: float 
     plotter.add_mesh(
         pv.lines_from_points(positions),
         color="yellow",
-        line_width=3,
+        line_width=1,
         label="Кривая"
     )
 
@@ -102,12 +102,6 @@ def visualize_curve_with_frenet_frame(curve, num_frames: int = 12, scale: float 
         arrow_b = pv.Arrow(start=position, direction=binormal, scale=0.1)
         plotter.add_mesh(arrow_b, color="blue", opacity=0.9)
 
-        # ★ Точка на кривой (Pt) - жёлтая
-        # plotter.add_mesh(pv.Sphere(radius=0.005, center=position), color="yellow", opacity=1.0)
-
-        # ★ Точка на эволюте (Pe) - фиолетовая
-        # plotter.add_mesh(pv.Sphere(radius=0.005, center=evolute_point), color="purple", opacity=1.0)
-
         # ★ Соединяем Pt и Pe отрезком (отрезок нормали/радиуса)
         line_points = np.array([position, evolute_point])
         plotter.add_mesh(pv.lines_from_points(line_points),
@@ -151,8 +145,6 @@ if __name__ == "__main__":
     print("Красные стрелки      → Касательная (Tangent)")
     print("Зелёные стрелки      → Нормаль (Normal)")
     print("Синие стрелки        → Бинормаль (Binormal)")
-    print("Жёлтые точки (Pt)    → Точки на кривой")
-    print("Фиолетовые точки (Pe)→ Центры кривизны (эволюта)")
     print("Голубые отрезки      → Радиусы кривизны (Pt → Pe)")
     print("=" * 80)
 
